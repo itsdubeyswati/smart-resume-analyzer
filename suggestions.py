@@ -1,15 +1,16 @@
-skills_list = [
-    "python", "machine learning", "deep learning", "data science", "sql", "nlp",
-    "tensorflow", "pytorch", "excel", "aws", "azure", "git", "github", "docker",
-    "html", "css", "javascript", "power bi", "tableau", "flask", "fastapi"
-]
+def get_improvement_suggestions(analysis_result, selected_role):
+    suggestions = []
 
-def get_skill_matches(resume_text, jd_text):
-    found = []
-    missing = []
-    for skill in skills_list:
-        if skill.lower() in resume_text.lower():
-            found.append(skill)
-        elif skill.lower() in jd_text.lower():
-            missing.append(skill)
-    return found, missing
+    if analysis_result['match_percentage'] < 50:
+        suggestions.append("🚀 Significant opportunity for growth. Focus on building foundational skills for this role.")
+    else:
+        suggestions.append("👍 Good match! Keep enhancing your skills with advanced topics.")
+
+    # Suggest to learn missing skills
+    for skill in analysis_result['missing_skills']:
+        suggestions.append(f"🎯 Priority: {skill} - Consider learning this skill to improve your profile.")
+
+    suggestions.append("📝 Resume Enhancement: Use action verbs and quantify achievements.")
+    suggestions.append("🔍 Optimize your resume with keywords matching the job description.")
+
+    return suggestions

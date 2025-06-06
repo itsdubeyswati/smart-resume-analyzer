@@ -1,131 +1,212 @@
 import streamlit as st
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
+import os
+from extractor import extract_text_from_pdf
+from matcher import analyze_resume
+from visualizer import (
+    create_skills_chart,
+    create_match_visualization,
+    create_skills_distribution_bar,
+    create_match_gauge,
+    create_skills_radar,
+    # create_skills_wordcloud,  # Optional, see notes below
+)
+from suggestions import get_improvement_suggestions
 
-# Set page config
-st.set_page_config(page_title="Smart Resume Analyzer", layout="wide", initial_sidebar_state="collapsed")
+def main():
+    # Page config - must be first Streamlit call
+    st.set_page_config(
+        page_title="Smart Resume Analyzer",
+        page_icon="💼",
+        layout="centered"
+    )
 
-# Hide sidebar and sidebar toggle arrow
-st.markdown("""
+    # Custom CSS for blue theme
+    st.markdown("""
     <style>
-        [data-testid="collapsedControl"], [data-testid="stSidebar"] {
-            display: none;
-        }
-
-        .main {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-        }
-
-        .stButton > button {
-            background-color: #1f77b4;
-            color: white;
-            border: none;
-            padding: 0.75rem 2rem;
-            font-size: 1.1rem;
-            border-radius: 8px;
-            transition: 0.3s ease;
-        }
-
-        .stButton > button:hover {
-            background-color: #145a86;
-            transform: scale(1.05);
-            color: white;
-        }
-
-        .stFileUploader, .stSelectbox > div {
-            width: 60% !important;
-            margin: auto;
-            background-color: #2b2b2b !important;
-            color: white !important;
-            border-radius: 10px;
-            border: 1px solid #555;
-        }
-
-        .big-title {
-            font-size: 2.5rem;
-            font-weight: bold;
-            text-align: center;
-            color: #2c8cff;
-        }
-
-        .subtext {
-            text-align: center;
-            margin-bottom: 2rem;
-            font-size: 1rem;
-            color: white;
-        }
-
-        .section-label {
-            margin-top: 2rem;
-            font-weight: 600;
-            font-size: 1.3rem;
-            color: white;
-        }
+    .main-header {
+        text-align: center;
+        color: #1f77b4;
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+    .sub-header {
+        text-align: center;
+        color: #666;
+        font-size: 1.2rem;
+        margin-bottom: 2rem;
+    }
+    .metric-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin: 1rem 0;
+    }
+    .skill-tag {
+        background-color: #e3f2fd;
+        color: #1565c0;
+        padding: 0.25rem 0.5rem;
+        border-radius: 15px;
+        margin: 0.25rem;
+        display: inline-block;
+        font-size: 0.9rem;
+    }
+    .missing-skill-tag {
+        background-color: #ffebee;
+        color: #c62828;
+        padding: 0.25rem 0.5rem;
+        border-radius: 15px;
+        margin: 0.25rem;
+        display: inline-block;
+        font-size: 0.9rem;
+    }
+    .section-header {
+        color: #1f77b4;
+        font-size: 1.4rem;
+        font-weight: bold;
+        margin: 1.5rem 0 1rem 0;
+    }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# Title & Subtitle
-st.markdown("<div class='big-title'>🔍 Smart Resume Analyzer</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtext'>Upload your resume and select a job role to get insights into your skills</div>", unsafe_allow_html=True)
+    # Header
+    st.markdown('<h1 class="main-header">💼 Smart Resume Analyzer</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">AI-powered resume analysis to match your skills with job requirements</p>', unsafe_allow_html=True)
 
-# Upload Resume
-st.markdown("<div class='section-label'>📄 Upload Resume (PDF only)</div>", unsafe_allow_html=True)
-uploaded_file = st.file_uploader("Upload", type=["pdf"], label_visibility="collapsed")
+    # Job role selection
+    job_roles = [
+        "Data Scientist",
+        "ML Engineer", 
+        "Software Developer",
+        "Business Analyst",
+        "Product Manager",
+        "DevOps Engineer",
+        "Frontend Developer",
+        "Backend Developer",
+        "Full Stack Developer",
+        "Data Analyst"
+    ]
+    
+    selected_role = st.selectbox(
+        "🎯 Select Target Job Role:",
+        job_roles,
+        help="Choose the job role you want to analyze your resume against"
+    )
 
-# Select Job Role
-st.markdown("<div class='section-label'>🎯 Select Job Role</div>", unsafe_allow_html=True)
-job_role = st.selectbox("", ["Select", "Data Scientist", "Web Developer", "Machine Learning Engineer", "Business Analyst"])
+    # File upload
+    uploaded_file = st.file_uploader(
+        "📄 Upload Your Resume (PDF)",
+        type=['pdf'],
+        help="Upload your resume in PDF format for analysis"
+    )
 
-# Centered Analyze Button
-analyze = st.button("🚀 Analyze Resume")
+    if uploaded_file is not None:
+        # Save uploaded file temporarily
+        with open("temp_resume.pdf", "wb") as f:
+            f.write(uploaded_file.getbuffer())
 
-# Resume analysis placeholder
-if analyze:
-    if uploaded_file is None or job_role == "Select":
-        st.warning("⚠️ Please upload a resume and select a job role before analyzing.")
+        # Extract text from PDF
+        with st.spinner("🔍 Extracting text from your resume..."):
+            resume_text = extract_text_from_pdf("temp_resume.pdf")
+
+        if resume_text:
+            st.success("✅ Resume text extracted successfully!")
+
+            # Analyze resume
+            with st.spinner("🤖 Analyzing your resume..."):
+                analysis_result = analyze_resume(resume_text, selected_role)
+
+            # Show match score and skills found
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"""
+                <div class="metric-container">
+                    <h3>Match Score</h3>
+                    <h1>{analysis_result.get('match_percentage', 0):.1f}%</h1>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                st.markdown(f"""
+                <div class="metric-container">
+                    <h3>Skills Found</h3>
+                    <h1>{len(analysis_result.get('matched_skills', []))} / {len(analysis_result.get('job_skills', []))}</h1>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # Skills analysis section
+            st.markdown('<h2 class="section-header">📊 Skills Analysis</h2>', unsafe_allow_html=True)
+
+            # Matched skills
+            if analysis_result.get('matched_skills'):
+                st.markdown("**✅ Skills Found in Your Resume:**")
+                skills_html = ""
+                for skill in analysis_result['matched_skills']:
+                    skills_html += f'<span class="skill-tag">{skill}</span>'
+                st.markdown(skills_html, unsafe_allow_html=True)
+
+            # Missing skills
+            if analysis_result.get('missing_skills'):
+                st.markdown("**❌ Missing Skills:**")
+                missing_skills_html = ""
+                for skill in analysis_result['missing_skills']:
+                    missing_skills_html += f'<span class="missing-skill-tag">{skill}</span>'
+                st.markdown(missing_skills_html, unsafe_allow_html=True)
+
+            # Visual Analysis
+            st.markdown('<h2 class="section-header">📈 Visual Analysis</h2>', unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+
+            with col1:
+                try:
+                    skills_chart = create_skills_chart(analysis_result)
+                    st.plotly_chart(skills_chart, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error generating skills chart: {e}")
+
+                try:
+                    skills_dist = create_skills_distribution_bar(analysis_result)
+                    st.plotly_chart(skills_dist, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error generating skills distribution chart: {e}")
+
+            with col2:
+                try:
+                    match_viz = create_match_visualization(analysis_result)
+                    st.plotly_chart(match_viz, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error generating match visualization: {e}")
+
+                try:
+                    match_gauge = create_match_gauge(analysis_result)
+                    st.plotly_chart(match_gauge, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error generating match gauge: {e}")
+
+            # Radar chart full width
+            try:
+                skills_radar = create_skills_radar(analysis_result)
+                st.plotly_chart(skills_radar, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error generating skills radar chart: {e}")
+
+            # Improvement suggestions
+            st.markdown('<h2 class="section-header">💡 Improvement Suggestions</h2>', unsafe_allow_html=True)
+            suggestions = get_improvement_suggestions(analysis_result, selected_role)
+            for i, suggestion in enumerate(suggestions, 1):
+                st.markdown(f"**{i}.** {suggestion}")
+
+        else:
+            st.error("❌ Could not extract text from the PDF. Please ensure it's a valid PDF file.")
+
+        # Clean up temp file
+        if os.path.exists("temp_resume.pdf"):
+            os.remove("temp_resume.pdf")
+
     else:
-        st.success("✅ Resume successfully analyzed!")
+        st.info("Please upload your resume in PDF format to start analysis.")
 
-        # Simulated analysis output (replace this with actual logic if available)
-        st.markdown("### 🔍 Resume Insights")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("#### Skill Match Distribution (Pie Chart)")
-            labels = ['Python', 'SQL', 'ML', 'DL', 'Web Dev']
-            values = [25, 20, 15, 20, 20]
-            fig1, ax1 = plt.subplots()
-            ax1.pie(values, labels=labels, autopct='%1.1f%%', startangle=90)
-            ax1.axis('equal')
-            st.pyplot(fig1)
-
-        with col2:
-            st.markdown("#### Proficiency Levels (Horizontal Bar)")
-            skills = ['Python', 'SQL', 'ML', 'DL', 'Web Dev']
-            scores = [80, 70, 60, 50, 65]
-            fig2, ax2 = plt.subplots()
-            ax2.barh(skills, scores, color='skyblue')
-            ax2.set_xlim(0, 100)
-            ax2.set_xlabel("Proficiency (%)")
-            st.pyplot(fig2)
-
-        st.markdown("#### Skill Balance Radar Chart")
-        # Radar chart
-        categories = ['Coding', 'Data', 'ML', 'Soft Skills', 'Communication']
-        values = [80, 75, 65, 85, 70]
-        values += values[:1]  # close the loop
-        angles = np.linspace(0, 2 * np.pi, len(categories), endpoint=False).tolist()
-        angles += angles[:1]
-
-        fig3, ax3 = plt.subplots(subplot_kw={'polar': True})
-        ax3.plot(angles, values, 'o-', linewidth=2)
-        ax3.fill(angles, values, alpha=0.3)
-        ax3.set_xticks(angles[:-1])
-        ax3.set_xticklabels(categories)
-        ax3.set_yticklabels([])
-        st.pyplot(fig3)
+if __name__ == "__main__":
+    main()
